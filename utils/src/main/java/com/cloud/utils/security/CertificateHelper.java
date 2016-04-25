@@ -38,6 +38,8 @@ import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.commons.codec.binary.Base64;
@@ -121,20 +123,27 @@ public class CertificateHelper {
     public static List<Certificate> parseChain(String chain) throws IOException, CertificateException {
 
         final List<Certificate> certs = new ArrayList<Certificate>();
-        final PemReader pemReader = new PemReader(new StringReader(chain));
+        try(final PemReader pemReader = new PemReader(new StringReader(chain));)
+        {
+            Certificate cert = null;
+            final PemObject pemObject = pemReader.readPemObject();
+            final ByteArrayInputStream bais = new ByteArrayInputStream(pemObject.getContent());
+            final CertificateFactory certificateFactory = CertificateFactory.getInstance("X509");
 
-        Certificate crt = null;
-        final PemObject pemObject = pemReader.readPemObject();
-        final ByteArrayInputStream bais = new ByteArrayInputStream(pemObject.getContent());
-        final CertificateFactory certificateFactory = CertificateFactory.getInstance("X509");
-
-        while ((crt = certificateFactory.generateCertificate(bais)) != null) {
-            if (crt instanceof X509Certificate) {
-                certs.add(crt);
+            Collection<? extends Certificate> c = certificateFactory.generateCertificates(bais);
+            Iterator<? extends Certificate> i = c.iterator();
+            while (i.hasNext()) {
+                cert = i.next();
+                if (cert instanceof X509Certificate) {
+                    certs.add(cert);
+                }
+            }
+            if (certs.size() == 0) {
+                throw new IllegalArgumentException("Unable to decode certificate chain");
             }
         }
-        if (certs.size() == 0) {
-            throw new IllegalArgumentException("Unable to decode certificate chain");
+        finally {
+            // just close the pemReader
         }
 
         return certs;
